@@ -1,0 +1,10 @@
+[package]
+name = "smart_denoise"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+png = "*"
+image = "*"
+vulkano = "0.29"
+vulkano-shaders = "0.29"
