@@ -1,4 +1,4 @@
 vulkano_shaders::shader! {
         ty: "compute",
-        bytes: "compiled_unopt.spv"
+        bytes: "compiled_opt_dbg.spv"
 }

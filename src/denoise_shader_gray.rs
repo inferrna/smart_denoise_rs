@@ -34,12 +34,7 @@ void main() {
     float invThresholdSqx2 = .5 / (params.threshold * params.threshold);     // 1.0 / (params.sigma^2 * 2.0)
     float invThresholdSqrt2PI = INV_SQRT_OF_2PI / params.threshold;   // 1.0 / (sqrt(2*PI) * params.sigma)
 
-
-    //GLfloat gamma = 2.2;
-    //glUniform1f(locInvGamma, 1.0/gamma);
-    //vec3 centrPx = pow(texture(tex,uv).rgb, vec3(invGamma));
-
-    const float centrPx = texture(image_in, uv).x /255.0;
+    const float centrPx = texture(image_in, uv).x / 255.0;
 
     float zBuff = 0.0;
     float aBuff = 0.0;
@@ -50,7 +45,7 @@ void main() {
         for (d.y=-pt; d.y <= pt; d.y++) {
             float blurFactor = exp( -dot(d , d) * invSigmaQx2 ) * invSigmaQx2PI;
 
-            float walkPx = texture(image_in,uv+d/size).x /255.0;
+            float walkPx = texture(image_in,uv+d/size).x / 255.0;
 
             float dC = walkPx-centrPx;
             float deltaFactor = exp( -(dC * dC) * invThresholdSqx2) * invThresholdSqrt2PI * blurFactor;
@@ -59,8 +54,7 @@ void main() {
             aBuff += deltaFactor*walkPx;
         }
     }
-    uint value = uint(round(255.0*aBuff/zBuff));
-    //uint value = uint(round(centrPx));
+    uint value = uint(round(255.0 * aBuff/zBuff));
     imageStore(image_out, ivec2(gl_GlobalInvocationID.xy), uvec4(min(value, 255),0,0,0));
 }"
 }

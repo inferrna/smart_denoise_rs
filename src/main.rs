@@ -1,5 +1,9 @@
-mod denoise_shader;
-mod denoise_shader_compiled;
+mod denoise_shader_gray;
+mod denoise_shader_gray_compiled;
+mod denoise_shader_frag;
+mod vertex_shader;
+mod denoise_compute;
+mod denoise_frag;
 
 use std::fs::File;
 use std::io::BufWriter;
@@ -11,7 +15,7 @@ use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::device::{DeviceCreateInfo, Features, QueueCreateInfo};
 use vulkano::device::DeviceExtensions;
 use vulkano::instance::{InstanceCreateInfo, InstanceExtensions};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer, SubpassContents};
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::{Device, Queue};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
@@ -19,12 +23,18 @@ use vulkano::format::Format;
 use vulkano::image::{ImageAccess, ImageCreateFlags, ImageDimensions, ImageUsage, StorageImage};
 use vulkano::image::view::{ImageView, ImageViewCreateInfo, ImageViewType};
 use vulkano::instance::Instance;
-use vulkano::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint};
+use vulkano::pipeline::{ComputePipeline, GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::query::{QueryControlFlags, QueryPool, QueryPoolCreateInfo, QueryType};
-use vulkano::sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo};
+use vulkano::sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode, SamplerReductionMode};
 use vulkano::sync::GpuFuture;
 use vulkano::{sync, Version};
-
+use vulkano::pipeline::graphics::vertex_input::{BuffersDefinition};
+use vulkano::render_pass::Subpass;
+use bytemuck::{Pod, Zeroable};
+use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
+use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
+//#[global_allocator]
+//static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 pub(crate) fn vlk_init() -> (Arc<Device>, Arc<Queue>) {
         let instance =
@@ -99,15 +109,6 @@ fn main() {
     let mut buffer = vec![0; (img_w * img_h) as usize];
     reader.next_frame(&mut buffer).unwrap();
 
-    let path_out = Path::new(&filename_out);
-    let file = File::create(path_out).unwrap();
-    let mut w = BufWriter::new(file);
-
-    let mut encoder = png::Encoder::new(w, img_w, img_h); // Width is 2 pixels and height is 1.
-    encoder.set_color(reader.info().color_type);
-    encoder.set_depth(reader.info().bit_depth);
-
-
     let input_usage = BufferUsage{
         transfer_source: true,
         transfer_destination: false,
@@ -162,50 +163,13 @@ fn main() {
                                                  transfer_destination: false,
                                                  sampled: false,
                                                  storage: true,
-                                                 color_attachment: false,
+                                                 color_attachment: true,
                                                  depth_stencil_attachment: false,
                                                  transient_attachment: false,
                                                  input_attachment: false
                                              },
                                              ImageCreateFlags::none(),
                                              Some(queue.family())).unwrap();
-
-    let shader = crate::denoise_shader::load(device.clone()).unwrap();
-    //let shader = crate::denoise_shader_compiled::load(device.clone()).unwrap();
-    let compute_pipeline =  ComputePipeline::new(device.clone(), shader.entry_point("main").unwrap(), &(), None, |_| {})
-            .expect("failed to create compute pipeline");
-
-    let sampler = Sampler::new(device.clone(), SamplerCreateInfo {
-        mag_filter: Filter::Linear,
-        min_filter: Filter::Linear,
-        address_mode: [SamplerAddressMode::Repeat; 3],
-        mip_lod_bias: 1.0,
-        lod: 0.0..=100.0,
-        anisotropy: None,
-        //anisotropy: Some(4.0),
-        ..Default::default()
-    }).unwrap();
-
-
-    let input_view = ImageView::new_default(input_img.clone()).unwrap();
-    let output_view = ImageView::new_default(result_img.clone()).unwrap();
-
-    let layout = compute_pipeline.layout().set_layouts().get(0).unwrap();
-
-    dbg!(layout.bindings());
-
-    let items = [WriteDescriptorSet::image_view_sampler(0, input_view.clone(), sampler.clone()),
-                     WriteDescriptorSet::image_view(1, output_view.clone())];
-
-    let set = PersistentDescriptorSet::new(layout.clone(), items).unwrap();
-
-    let push_constants = denoise_shader::ty::Parameters {
-        Width: img_w,
-        Height: img_h,
-        sigma: 7.0,
-        kSigma: 3.0,
-        threshold: 0.4
-    };
 
     //Buffer to image
     let command_buffer = {
@@ -221,25 +185,30 @@ fn main() {
             .wait(None).unwrap();
 
 
-    //Computation itself
-    let now = Instant::now();
-    let command_buffer = {
-        let mut builder =
-            AutoCommandBufferBuilder::primary(device.clone(), queue.family(), CommandBufferUsage::OneTimeSubmit).unwrap();
-        builder
-            .bind_pipeline_compute(compute_pipeline.clone())
-            .bind_descriptor_sets(PipelineBindPoint::Compute, compute_pipeline.layout().clone(), 0, set.clone())
-            .push_constants(compute_pipeline.layout().clone(), 0, push_constants)
-            .dispatch([img_w, img_h, 1]).unwrap();
-        builder.build().unwrap()
-    };
-    let future = sync::now(device.clone())
-        .then_execute(queue.clone(), command_buffer)
-        .unwrap()
-        .then_signal_fence_and_flush()
-        .unwrap();
-    future.wait(None).unwrap();
-    println!("Execute computation itself taken {} milliseconds", now.elapsed().as_millis());
+    let sampler = Sampler::new(device.clone(), SamplerCreateInfo {
+        mag_filter: Filter::Linear,
+        min_filter: Filter::Linear,
+        mipmap_mode: SamplerMipmapMode::Linear,
+        reduction_mode: SamplerReductionMode::WeightedAverage,
+        address_mode: [SamplerAddressMode::Repeat; 3],
+        mip_lod_bias: 0.0,
+        lod: 0.0..=0.0,
+        anisotropy: None,
+        //anisotropy: Some(4.0),
+        ..Default::default()
+    }).unwrap();
+
+    #[cfg(not(feature="compute"))]
+    #[cfg(not(feature="fragment"))]
+    panic!("Please, choice one of features: \"compute\" or \"fragment\" ");
+
+    #[cfg(all(feature="compute", feature="fragment"))]
+    panic!("Please, choice just one feature");
+
+    #[cfg(feature="fragment")]
+    denoise_frag::denoise(device.clone(), queue.clone(), input_img.clone(), result_img.clone(), sampler.clone());
+    #[cfg(feature="compute")]
+    denoise_compute::denoise(device.clone(), queue.clone(), input_img.clone(), result_img.clone(), sampler.clone());
 
     //Read filtered image
     let command_buffer = {
@@ -254,41 +223,17 @@ fn main() {
     finished.then_signal_fence_and_flush().unwrap()
             .wait(None).unwrap();
 
-    /*
-        // Create a query pool for occlusion queries, with 3 slots.
-        let query_pool = QueryPool::new(
-            device.clone(),
-            QueryPoolCreateInfo {
-                query_count: 2,
-                ..QueryPoolCreateInfo::query_type(QueryType::Occlusion)
-          },
-        )
-        .unwrap();
-        //Copy to input image
-        let command_buffer = unsafe {
-            let mut builder =
-                AutoCommandBufferBuilder::primary(device.clone(), queue.family(), CommandBufferUsage::OneTimeSubmit).unwrap();
-            builder
-            .reset_query_pool(query_pool.clone(), 0..2).unwrap()
-            .begin_query(query_pool.clone(), 0, QueryControlFlags { precise: false }).unwrap()
-            .copy_buffer_to_image(img_buf.clone(), input_img.clone()).unwrap()
-            .end_query(query_pool.clone(), 0).unwrap()
-            .begin_query(query_pool.clone(), 1, QueryControlFlags { precise: false }).unwrap()
-            .bind_pipeline_compute(compute_pipeline.clone())
-            .bind_descriptor_sets(PipelineBindPoint::Compute, compute_pipeline.layout().clone(), 0, set.clone())
-            .push_constants(compute_pipeline.layout().clone(), 0, push_constants)
-            .dispatch([img_w, img_h, 1]).unwrap()
-            .end_query(query_pool.clone(), 1).unwrap()
-            .copy_image_to_buffer(result_img.clone(), result_buf.clone()).unwrap();
-            builder.build().unwrap()
-        };
-
-        */
-
     let rl = result_buf.read().unwrap();
     let result_bytes: Vec<u8> = rl.to_vec();
 
+    let path_out = Path::new(&filename_out);
+    let file = File::create(path_out).unwrap();
+    let mut w = BufWriter::new(file);
+
+    let mut encoder = png::Encoder::new(w, img_w, img_h); // Width is 2 pixels and height is 1.
+    encoder.set_color(reader.info().color_type);
+    encoder.set_depth(reader.info().bit_depth);
+
     let mut writer = encoder.write_header().unwrap();
     writer.write_image_data(&result_bytes).unwrap();
-
 }

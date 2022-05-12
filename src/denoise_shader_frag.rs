@@ -1,5 +1,5 @@
 vulkano_shaders::shader! {
-        ty: "compute",
+        ty: "fragment",
         src: "
 #version 450
 
@@ -7,9 +7,8 @@ vulkano_shaders::shader! {
 // https://github.com/BrutPitt/glslSmartDeNoise/blob/master/Shaders/frag.glsl
 // This software is distributed under the terms of the BSD 2-Clause license
 
-layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+layout(location = 0) out uint out_gray;
 layout(set = 0, binding = 0) uniform sampler2D image_in;
-layout(set = 0, binding = 1, r8ui) uniform writeonly restrict uimage2D image_out;
 
 #define INV_SQRT_OF_2PI 0.39894228040143267793994605993439  // 1.0/SQRT_OF_2PI
 #define INV_PI          0.31830988618379067153776752674503
@@ -23,7 +22,8 @@ layout(push_constant) uniform Parameters {
 } params;
 
 void main() {
-    vec2 uv = vec2(gl_GlobalInvocationID.xy);
+    vec2 size = vec2(textureSize(image_in, 0));
+    vec2 uv = vec2(gl_FragCoord.xy) / size; //wSize in original code
     float radius = round(params.kSigma*params.sigma);
     float radQ = radius * radius;
 
@@ -33,8 +33,8 @@ void main() {
     float invThresholdSqx2 = .5 / (params.threshold * params.threshold);     // 1.0 / (params.sigma^2 * 2.0)
     float invThresholdSqrt2PI = INV_SQRT_OF_2PI / params.threshold;   // 1.0 / (sqrt(2*PI) * params.sigma)
 
-    vec2 size = vec2(params.Width, params.Height);
-    const float centrPx = texture(image_in, vec2(gl_GlobalInvocationID.xy) / size).x;
+    const float centrPx = texture(image_in, uv).x / 255.0;
+
     float zBuff = 0.0;
     float aBuff = 0.0;
 
@@ -44,7 +44,7 @@ void main() {
         for (d.y=-pt; d.y <= pt; d.y++) {
             float blurFactor = exp( -dot(d , d) * invSigmaQx2 ) * invSigmaQx2PI;
 
-            float walkPx = texture(image_in,uv+d/size).x;
+            float walkPx = texture(image_in,uv+d/size).x / 255.0;
 
             float dC = walkPx-centrPx;
             float deltaFactor = exp( -(dC * dC) * invThresholdSqx2) * invThresholdSqrt2PI * blurFactor;
@@ -53,8 +53,7 @@ void main() {
             aBuff += deltaFactor*walkPx;
         }
     }
-    uint value = uint(round(aBuff/zBuff));
-    //uint value = uint(round(centrPx));
-    imageStore(image_out, ivec2(gl_GlobalInvocationID.xy), uvec4(min(value, 255),0,0,0));
+    uint value = uint(round(255.0 * aBuff/zBuff));
+    out_gray = value;
 }"
 }
