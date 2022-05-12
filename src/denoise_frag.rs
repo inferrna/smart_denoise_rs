@@ -3,9 +3,9 @@ use std::time::Instant;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::{Device, Queue};
-use vulkano::image::{ImageAccess, ImageDimensions, StorageImage};
+use vulkano::image::{ImageAccess, StorageImage};
 use vulkano::image::view::ImageView;
-use vulkano::pipeline::{ComputePipeline, GraphicsPipeline, Pipeline, PipelineBindPoint};
+use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
@@ -13,10 +13,8 @@ use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, Subpass};
 use vulkano::sampler::Sampler;
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
-use crate::{denoise_shader_frag, denoise_shader_gray};
 use bytemuck::{Pod, Zeroable};
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
-use vulkano::format::Format;
 
 
 #[repr(C)]
@@ -84,8 +82,6 @@ pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<Sto
         kSigma: 3.0,
         threshold: 0.195
     };
-
-    let layout = graphics_pipeline.layout().set_layouts().get(0).unwrap();
 
     let vertices = [
         Vertex {

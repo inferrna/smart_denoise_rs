@@ -40,7 +40,6 @@ pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<Sto
         threshold: 0.195
     };
 
-    let layout = compute_pipeline.layout().set_layouts().get(0).unwrap();
     //Computation itself
     let now = Instant::now();
     let command_buffer = {

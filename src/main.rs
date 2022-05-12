@@ -11,33 +11,20 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Instant;
-use image::io::Reader as ImageReader;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::device::{DeviceCreateInfo, Features, QueueCreateInfo};
 use vulkano::device::DeviceExtensions;
 use vulkano::instance::{InstanceCreateInfo, InstanceExtensions};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer, SubpassContents};
-use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer};
 use vulkano::device::{Device, Queue};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::format::Format;
-use vulkano::image::{ImageAccess, ImageCreateFlags, ImageDimensions, ImageUsage, StorageImage};
-use vulkano::image::view::{ImageView, ImageViewCreateInfo, ImageViewType};
+use vulkano::image::{ImageCreateFlags, ImageDimensions, ImageUsage, StorageImage};
 use vulkano::instance::Instance;
-use vulkano::pipeline::{ComputePipeline, GraphicsPipeline, Pipeline, PipelineBindPoint};
-use vulkano::query::{QueryControlFlags, QueryPool, QueryPoolCreateInfo, QueryType};
 use vulkano::sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode, SamplerReductionMode};
 use vulkano::sync::GpuFuture;
-use vulkano::{sync, Version};
-use vulkano::pipeline::graphics::vertex_input::{BuffersDefinition};
-use vulkano::render_pass::Subpass;
-use bytemuck::{Pod, Zeroable};
+use vulkano::{Version};
 use png::{BitDepth, ColorType};
-use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
-use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
-//#[global_allocator]
-//static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 pub(crate) fn vlk_init() -> (Arc<Device>, Arc<Queue>) {
         let instance =
@@ -96,8 +83,8 @@ pub(crate) fn vlk_init() -> (Arc<Device>, Arc<Queue>) {
 }
 
 enum UsingShader {
-    FRAGMENT,
-    COMPUTE
+    Fragment,
+    Compute
 }
 
 fn main() {
@@ -109,8 +96,8 @@ fn main() {
     let shader_type_str = std::env::args().nth(3).expect(&format!("{}\n no shader type provided. Use fragment or compute", usage_str));
 
     let shader_type = match shader_type_str.as_str() {
-        "fragment" => UsingShader::FRAGMENT,
-        "compute" => UsingShader::COMPUTE,
+        "fragment" => UsingShader::Fragment,
+        "compute" => UsingShader::Compute,
         v => panic!("Unknown shader type {}. Use fragment or compute.", v)
     };
 
@@ -218,8 +205,8 @@ fn main() {
 
 
     match shader_type {
-        UsingShader::FRAGMENT => denoise_frag::denoise(device.clone(), queue.clone(), input_img.clone(), result_img.clone(), sampler.clone()),
-        UsingShader::COMPUTE => denoise_compute::denoise(device.clone(), queue.clone(), input_img.clone(), result_img.clone(), sampler.clone())
+        UsingShader::Fragment => denoise_frag::denoise(device.clone(), queue.clone(), input_img.clone(), result_img.clone(), sampler.clone()),
+        UsingShader::Compute => denoise_compute::denoise(device.clone(), queue.clone(), input_img.clone(), result_img.clone(), sampler.clone())
     }
 
     //Read filtered image
@@ -240,7 +227,7 @@ fn main() {
 
     let path_out = Path::new(&filename_out);
     let file = File::create(path_out).unwrap();
-    let mut w = BufWriter::new(file);
+    let w = BufWriter::new(file);
 
     let mut encoder = png::Encoder::new(w, img_w, img_h); // Width is 2 pixels and height is 1.
     encoder.set_color(reader.info().color_type);
