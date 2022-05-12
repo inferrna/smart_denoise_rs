@@ -22,6 +22,8 @@ pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<Sto
 
     let layout = compute_pipeline.layout().set_layouts().get(0).unwrap();
 
+    dbg!(layout);
+
     let items = [WriteDescriptorSet::image_view_sampler(0, input_view.clone(), sampler.clone()),
         WriteDescriptorSet::image_view(1, output_view.clone())];
 
@@ -48,7 +50,7 @@ pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<Sto
             .bind_pipeline_compute(compute_pipeline.clone())
             .bind_descriptor_sets(PipelineBindPoint::Compute, compute_pipeline.layout().clone(), 0, set.clone())
             .push_constants(compute_pipeline.layout().clone(), 0, push_constants)
-            .dispatch([img_w, img_h, 1]).unwrap();
+            .dispatch([img_w / 8, img_h / 8, 1]).unwrap();
         builder.build().unwrap()
     };
     let future = sync::now(device.clone())

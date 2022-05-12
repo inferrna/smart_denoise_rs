@@ -31,11 +31,15 @@ pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<Sto
     let shader = crate::denoise_shader_frag::load(device.clone()).unwrap();
     let vert_shader = crate::vertex_shader::load(device.clone()).unwrap();
 
+
+    let img_w = input_img.dimensions().width();
+    let img_h = input_img.dimensions().height();
+
     let render_pass = vulkano::single_pass_renderpass!(device.clone(),
             attachments: {
                 color: {
                     load: Clear,
-                    store: Store,
+                    store: DontCare,
                     format: result_img.format(),
                     samples: 1,
                 }
@@ -49,7 +53,7 @@ pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<Sto
 
     let viewport = Viewport {
         origin: [0.0, 0.0],
-        dimensions: [1024.0, 1024.0],
+        dimensions: [img_w as f32, img_h as f32],
         depth_range: 0.0..1.0,
     };
 
@@ -73,9 +77,6 @@ pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<Sto
 
     let set = PersistentDescriptorSet::new(layout.clone(), items).unwrap();
 
-    let img_w = input_img.dimensions().width();
-    let img_h = input_img.dimensions().height();
-
     let push_constants = crate::denoise_shader_frag::ty::Parameters {
         Width: img_w,
         Height: img_h,
@@ -90,6 +91,14 @@ pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<Sto
         Vertex {
             //position: [-0.5, -0.5],
             position: [-1.0, -1.0],
+        },
+        Vertex {
+            //position: [-0.5, 0.5],
+            position: [-1.0, 1.0],
+        },
+        Vertex {
+            //position: [0.5, -0.5],
+            position: [1.0, -1.0],
         },
         Vertex {
             //position: [-0.5, 0.5],

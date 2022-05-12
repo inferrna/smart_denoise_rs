@@ -7,7 +7,7 @@ vulkano_shaders::shader! {
 // https://github.com/BrutPitt/glslSmartDeNoise/blob/master/Shaders/frag.glsl
 // This software is distributed under the terms of the BSD 2-Clause license
 
-layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(set = 0, binding = 0) uniform sampler2D image_in;
 layout(set = 0, binding = 1, r8ui) uniform writeonly restrict uimage2D image_out;
 
