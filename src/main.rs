@@ -1,3 +1,5 @@
+extern crate core;
+
 mod denoise_shader_gray;
 mod denoise_shader_gray_compiled;
 mod denoise_shader_frag;
@@ -31,6 +33,7 @@ use vulkano::{sync, Version};
 use vulkano::pipeline::graphics::vertex_input::{BuffersDefinition};
 use vulkano::render_pass::Subpass;
 use bytemuck::{Pod, Zeroable};
+use png::{BitDepth, ColorType};
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 //#[global_allocator]
@@ -92,19 +95,34 @@ pub(crate) fn vlk_init() -> (Arc<Device>, Arc<Queue>) {
         (device, queue)
 }
 
+enum UsingShader {
+    FRAGMENT,
+    COMPUTE
+}
+
 fn main() {
 
     let self_name = std::env::args().nth(0).unwrap();
-    let usage_str = format!("Usage:\n{} filename_in filename_out", self_name);
+    let usage_str = format!("Usage:\n{} filename_in filename_out fragment|compute", self_name);
     let filename_in = std::env::args().nth(1).expect(&format!("{}\n no filename_in found", usage_str));
     let filename_out = std::env::args().nth(2).expect(&format!("{}\n no filename_out found", usage_str));
+    let shader_type_str = std::env::args().nth(3).expect(&format!("{}\n no shader type provided. Use fragment or compute", usage_str));
 
+    let shader_type = match shader_type_str.as_str() {
+        "fragment" => UsingShader::FRAGMENT,
+        "compute" => UsingShader::COMPUTE,
+        v => panic!("Unknown shader type {}. Use fragment or compute.", v)
+    };
 
     let (device, queue) = vlk_init();
     let img_file = File::open(filename_in).unwrap();
     let mut decoder = png::Decoder::new(img_file);
     decoder.set_transformations(png::Transformations::IDENTITY);
     let mut reader = decoder.read_info().unwrap();
+
+    assert_eq!(reader.info().bit_depth, BitDepth::Eight);
+    assert_eq!(reader.info().color_type, ColorType::Grayscale);
+
     let (img_w, img_h) = reader.info().size();
     let mut buffer = vec![0; (img_w * img_h) as usize];
     reader.next_frame(&mut buffer).unwrap();
@@ -198,17 +216,11 @@ fn main() {
         ..Default::default()
     }).unwrap();
 
-    #[cfg(not(feature="compute"))]
-    #[cfg(not(feature="fragment"))]
-    panic!("Please, choice one of features: \"compute\" or \"fragment\" ");
 
-    #[cfg(all(feature="compute", feature="fragment"))]
-    panic!("Please, choice just one feature");
-
-    #[cfg(feature="fragment")]
-    denoise_frag::denoise(device.clone(), queue.clone(), input_img.clone(), result_img.clone(), sampler.clone());
-    #[cfg(feature="compute")]
-    denoise_compute::denoise(device.clone(), queue.clone(), input_img.clone(), result_img.clone(), sampler.clone());
+    match shader_type {
+        UsingShader::FRAGMENT => denoise_frag::denoise(device.clone(), queue.clone(), input_img.clone(), result_img.clone(), sampler.clone()),
+        UsingShader::COMPUTE => denoise_compute::denoise(device.clone(), queue.clone(), input_img.clone(), result_img.clone(), sampler.clone())
+    }
 
     //Read filtered image
     let command_buffer = {
