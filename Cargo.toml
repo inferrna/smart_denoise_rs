@@ -11,6 +11,7 @@ vulkano-shaders = "0.29"
 bytemuck = "*"
 #jemallocator = "*"
 
+
 [profile.release]
 opt-level = 3
 codegen-units = 16

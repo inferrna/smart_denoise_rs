@@ -9,10 +9,17 @@ use vulkano::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint};
 use vulkano::sampler::Sampler;
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
+use vulkano::format::Format;
 use crate::denoise_shader_gray;
 
 pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<StorageImage>, result_img: Arc<StorageImage>, sampler: Arc<Sampler>) {
-    let shader = crate::denoise_shader_gray::load(device.clone()).unwrap();
+
+    let shader = match result_img.format() {
+        Format::R8_UINT => crate::denoise_shader_gray::load(device.clone()),
+        Format::R8G8B8A8_UINT | Format::R8G8B8_UINT => crate::denoise_shader_rgba::load(device.clone()),
+        _ => unimplemented!()
+    }.unwrap();
+
     //let shader = crate::denoise_shader_gray_compiled::load(device.clone()).unwrap();
     let compute_pipeline = ComputePipeline::new(device.clone(), shader.entry_point("main").unwrap(), &(), None, |_| {})
             .expect("failed to create compute pipeline");

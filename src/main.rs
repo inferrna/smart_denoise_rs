@@ -6,6 +6,7 @@ mod denoise_shader_frag;
 mod vertex_shader;
 mod denoise_compute;
 mod denoise_frag;
+mod denoise_shader_rgba;
 
 use std::fs::File;
 use std::io::BufWriter;
@@ -106,13 +107,21 @@ fn main() {
     let mut decoder = png::Decoder::new(img_file);
     decoder.set_transformations(png::Transformations::IDENTITY);
     let mut reader = decoder.read_info().unwrap();
-
+/*
     assert_eq!(reader.info().bit_depth, BitDepth::Eight);
     assert_eq!(reader.info().color_type, ColorType::Grayscale);
-
+*/
+    let color_samples = reader.info().color_type.samples() as u32;
+    dbg!(color_samples);
     let (img_w, img_h) = reader.info().size();
-    let mut buffer = vec![0; (img_w * img_h) as usize];
+    let mut buffer = vec![0; (img_w * img_h * color_samples) as usize];
     reader.next_frame(&mut buffer).unwrap();
+
+    let (input_format, result_format) = match color_samples {
+        1 => (Format::R32_SFLOAT, Format::R8_UINT),
+        4 => (Format::R32G32B32A32_SFLOAT, Format::R8G8B8A8_UINT),
+        _ => unimplemented!()
+    };
 
     let input_usage = BufferUsage{
         transfer_source: true,
@@ -140,14 +149,14 @@ fn main() {
         indirect_buffer: false,
         device_address: true,
         _ne: Default::default()
-    }, false, (0..img_w*img_h).map(|_|0u8)).expect("failed to create offsets buffer");
+    }, false, (0..img_w*img_h*color_samples).map(|_|0u8)).expect("failed to create output buffer");
 
     let img_buf = CpuAccessibleBuffer::from_iter(device.clone(), input_usage, false, buffer.iter().map(|v| (*v as f32)))
         .expect("failed to create buffer");
 
     let input_img = StorageImage::with_usage(device.clone(),
                              ImageDimensions::Dim2d { width: img_w, height: img_h, array_layers: 1},
-                             Format::R32_SFLOAT,
+                                             input_format,
                              ImageUsage {
                                  transfer_source: false,
                                  transfer_destination: true,
@@ -162,7 +171,7 @@ fn main() {
                              Some(queue.family())).unwrap();
     let result_img = StorageImage::with_usage(device.clone(),
                                              ImageDimensions::Dim2d { width: img_w, height: img_h, array_layers: 1},
-                                             Format::R8_UINT,
+                                              result_format,
                                              ImageUsage {
                                                  transfer_source: true,
                                                  transfer_destination: false,
