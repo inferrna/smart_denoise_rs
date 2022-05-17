@@ -9,8 +9,12 @@ image = "*"
 vulkano = "0.29"
 vulkano-shaders = "0.29"
 bytemuck = "*"
-#jemallocator = "*"
+num-traits = "0.2"
+byteorder = "*"
+rayon = "*"
 
+[build-dependencies]
+handlebars = "*"
 
 [profile.release]
 opt-level = 3
@@ -23,5 +27,4 @@ opt-level = 3
 codegen-units = 16
 
 [features]
-fragment = []
-compute = []
+skip_gen = []

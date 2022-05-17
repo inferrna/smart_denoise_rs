@@ -15,6 +15,7 @@ use vulkano::sync;
 use vulkano::sync::GpuFuture;
 use bytemuck::{Pod, Zeroable};
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
+use crate::{DenoiseParams, UsingShader};
 
 
 #[repr(C)]
@@ -25,8 +26,9 @@ struct Vertex {
 
 vulkano::impl_vertex!(Vertex, position);
 
-pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<StorageImage>, result_img: Arc<StorageImage>, sampler: Arc<Sampler>) {
-    let shader = crate::denoise_shader_frag::load(device.clone()).unwrap();
+pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<StorageImage>, result_img: Arc<StorageImage>,
+                      sampler: Arc<Sampler>, denoise_params: DenoiseParams) {
+    let shader = crate::generated::get_denoise_shader(device.clone(), result_img.format(), UsingShader::Fragment);
     let vert_shader = crate::vertex_shader::load(device.clone()).unwrap();
 
 
@@ -78,9 +80,9 @@ pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<Sto
     let push_constants = crate::denoise_shader_frag::ty::Parameters {
         Width: img_w,
         Height: img_h,
-        sigma: 7.0,
-        kSigma: 3.0,
-        threshold: 0.195
+        sigma: denoise_params.sigma,
+        kSigma: denoise_params.kSigma,
+        threshold: denoise_params.threshold
     };
 
     let vertices = [
