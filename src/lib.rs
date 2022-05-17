@@ -1,12 +1,8 @@
 extern crate core;
 
-mod denoise_shader_gray;
-mod denoise_shader_gray_compiled;
-mod denoise_shader_frag;
 mod vertex_shader;
 mod denoise_compute;
 mod denoise_frag;
-mod denoise_shader_rgba;
 mod generated;
 
 use std::sync::Arc;
@@ -91,6 +87,23 @@ pub struct DenoiseParams {
     kSigma: f32,
     threshold: f32
 }
+#[derive(Debug, Copy, Clone)]
+pub struct ShaderParams {
+    Width: u32,
+    Height: u32,
+    sigma: f32,
+    kSigma: f32,
+    threshold: f32
+}
+
+impl ShaderParams {
+    pub fn new(Width: u32, Height: u32, denoise_parameters: DenoiseParams) -> Self {
+        Self { Width, Height,
+            sigma: denoise_parameters.sigma,
+            kSigma: denoise_parameters.kSigma,
+            threshold: denoise_parameters.threshold }
+    }
+}
 
 impl DenoiseParams {
     pub fn new(sigma: f32, kSigma: f32, threshold: f32) -> Self {
@@ -171,7 +184,7 @@ impl TypeToFormat for u16 {
     }
 }
 
-pub fn denoise<D>(buf: &[D], img_w: u32, img_h: u32, shader_type: UsingShader, params: DenoiseParams) -> Vec<D>
+pub fn denoise<D>(buf: &[D], img_w: u32, img_h: u32, shader_type: UsingShader, params: DenoiseParams, use_hsv: bool) -> Vec<D>
 where D: TypeToFormat + num_traits::AsPrimitive<f32> + Sized + Copy + Zero + Send + Sync,
       D: Pod,
 {
@@ -281,9 +294,9 @@ where D: TypeToFormat + num_traits::AsPrimitive<f32> + Sized + Copy + Zero + Sen
 
     match shader_type {
         UsingShader::Fragment => denoise_frag::denoise(device.clone(), queue.clone(), input_img.clone(),
-                                                       result_img.clone(), sampler.clone(), params),
+                                                       result_img.clone(), sampler.clone(), params, use_hsv),
         UsingShader::Compute => denoise_compute::denoise(device.clone(), queue.clone(), input_img.clone(),
-                                                         result_img.clone(), sampler.clone(), params)
+                                                         result_img.clone(), sampler.clone(), params, use_hsv)
     }
 
     let result_buf = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage{

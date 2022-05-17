@@ -74,6 +74,26 @@ pub fn generate_shaders() {
         datas.push(data);
     }
 
+    let shader_typed_datas: Vec<HashMap<&str, &str>> = datas.into_iter().flat_map(|mut d| {
+        let mut df = d.clone();
+        d.insert("compute", "compute");
+        d.insert("shadert_enum_val", "UsingShader::Compute");
+        df.insert("fragment", "fragment");
+        df.insert("shadert_enum_val", "UsingShader::Fragment");
+        vec![d, df]
+    }).collect();
+
+    let shader_typed_datas_hsv: Vec<HashMap<&str, &str>> = shader_typed_datas.into_iter()
+        .flat_map(|mut d| {
+            if d.get("is_vector_type").eq(&Some(&"true")) {
+                let mut dhsv = d.clone();
+                dhsv.insert("is_hsv", "_hsv");
+                vec![d, dhsv]
+            } else {
+                vec![d]
+            }
+    }).collect();
+
     let format_pairs: HashMap::<String, String>  = vec![
         ("r8ui".to_string(), "R8_UINT".to_string()),
         ("r16ui".to_string(), "R16_UINT".to_string()),
@@ -83,29 +103,29 @@ pub fn generate_shaders() {
         .into_iter()
         .collect();
 
-    let type_pairs = vec![("compute", "UsingShader::Compute"), ("fragment", "UsingShader::Fragment")];
-
     let mut shader_mods = vec![];
     let mut shader_matchers = vec!["\n".to_string()];
 
     let base_path = "src/generated";
-    for (shadert, shadert_enum_val) in type_pairs.into_iter() {
 
-        for d in datas.iter_mut() {
-            d.insert(shadert, "true");
-            let shader = handlebars.render("shaders", d).unwrap();
+    for d in shader_typed_datas_hsv.iter() {
+        let shader = handlebars.render("shaders", d).unwrap();
 
-            let format = d.get("output_format").unwrap();
-            let vk_type = format_pairs.get(*format).unwrap();
+        let shadert = d.get("compute").unwrap_or(&"fragment");
+        let shadert_enum_val = d.get("shadert_enum_val").unwrap();
 
-            let name = format!("denoise_shader_{}_{}", shadert, format);
-            shader_mods.push(format!("pub(crate) mod {};", &name));
-            let align = 40-(vk_type.len()+shadert_enum_val.len());
-            shader_matchers.push(format!("{:>12}(Format::{}, {}) => {:align$}{}::load(device.clone()),", "", vk_type, shadert_enum_val, "", &name));
-            let mut file = File::create(format!("{}/{}.rs", base_path, &name)).unwrap();
-            file.write_all(shader.as_bytes()).unwrap();
-            d.remove(shadert);
-        }
+        let filtering_type = d.get("is_hsv").unwrap_or(&"");
+        let is_hsv = d.get("is_hsv").is_some();
+
+        let format = d.get("output_format").unwrap();
+        let vk_type = format_pairs.get(*format).unwrap();
+
+        let name = format!("denoise_shader_{}_{}{}", shadert, format, filtering_type);
+        shader_mods.push(format!("pub(crate) mod {};", &name));
+        let align = 48-(vk_type.len()+shadert_enum_val.len());
+        shader_matchers.push(format!("{:>12}(Format::{}, {}, {}) => {:align$}{}::load(device.clone()),", "", vk_type, shadert_enum_val, is_hsv, "", &name));
+        let mut file = File::create(format!("{}/{}.rs", base_path, &name)).unwrap();
+        file.write_all(shader.as_bytes()).unwrap();
     }
 
     let mut file = File::create(format!("{}/mod.rs", base_path)).unwrap();
@@ -119,8 +139,8 @@ use vulkano::device::Device;
 use vulkano::shader::ShaderModule;
 use crate::UsingShader;
 
-    pub(crate) fn get_denoise_shader(device: Arc<Device>, format: Format, shader_type: UsingShader) -> Arc<ShaderModule> {
-        match (format, shader_type) {"#.as_bytes()).unwrap();
+    pub(crate) fn get_denoise_shader(device: Arc<Device>, format: Format, shader_type: UsingShader, use_hsv: bool) -> Arc<ShaderModule> {
+        match (format, shader_type, use_hsv) {"#.as_bytes()).unwrap();
 
     file.write_all(shader_matchers.join("\n").as_bytes()).unwrap();
 

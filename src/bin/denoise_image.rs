@@ -20,38 +20,59 @@ use vulkano::sync::GpuFuture;
 use vulkano::Version;
 use png::{BitDepth, ColorType};
 use smart_denoise::{denoise, DenoiseParams, UsingShader};
+use clap::Parser;
+
+/// Simple program to greet a person
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Args {
+    /// Path to the input file. Only png is currently accepted
+    #[clap(short, long)]
+    filename_in: String,
+
+    /// Path to the input png file. Will use same format as the input one
+    #[clap(long)]
+    filename_out: String,
+
+    /// Which shader type to use
+    #[clap(long)]
+    shader_type: String,
+
+    ///Sigma parameter
+    #[clap(long)]
+    sigma: Option<f32>,
+
+    ///kSigma parameter
+    #[clap(long)]
+    kSigma: Option<f32>,
+
+    ///threshold parameter
+    #[clap(long)]
+    threshold: Option<f32>,
+
+    ///Process denoise in HSV (H & V actually) space
+    #[clap(long)]
+    use_hsv: bool,
+}
 
 fn main() {
+    let args = Args::parse();
 
-    let self_name = std::env::args().nth(0).unwrap();
-    let usage_str = format!("Usage:\n{} filename_in filename_out fragment|compute [sigma, kSigma, threshold]", self_name);
-    let filename_in = std::env::args().nth(1).expect(&format!("{}\n no filename_in found", usage_str));
-    let filename_out = std::env::args().nth(2).expect(&format!("{}\n no filename_out found", usage_str));
-    let shader_type_str = std::env::args().nth(3).expect(&format!("{}\n no shader type provided. Use fragment or compute", usage_str));
-
-    let denoise_params: DenoiseParams = match std::env::args().nth(4) {
-        None => DenoiseParams::default(),
-        Some(sigma_str) => {
-            let sigma: f32 = sigma_str.parse().expect("Provide floating point value for sigma pls");
-            let kSigma: f32 = std::env::args().nth(5)
-                .expect("Sigma, provided, but no kSigma found.")
-                .parse()
-                .expect("Provide floating point value for kSigma pls");
-            let threshold: f32 = std::env::args().nth(6)
-                .expect("Sigma and kSigma, provided, but no threshold found.")
-                .parse()
-                .expect("Provide floating point value for threshold pls");
-            DenoiseParams::new(sigma, kSigma, threshold)
-        }
+    let denoise_params: DenoiseParams = if args.sigma.is_none() && args.kSigma.is_none() && args.threshold.is_none() {
+        DenoiseParams::default()
+    } else {
+        DenoiseParams::new(args.sigma.expect("Provide all 3 parameters: sigma, kSigma and threshold"),
+                           args.kSigma.expect("Provide all 3 parameters: sigma, kSigma and threshold"),
+                           args.threshold.expect("Provide all 3 parameters: sigma, kSigma and threshold"))
     };
 
-    let shader_type = match shader_type_str.as_str() {
+    let shader_type = match args.shader_type.as_str() {
         "fragment" => UsingShader::Fragment,
         "compute" => UsingShader::Compute,
         v => panic!("Unknown shader type {}. Use fragment or compute.", v)
     };
 
-    let img_file = File::open(filename_in).unwrap();
+    let img_file = File::open(args.filename_in).unwrap();
     let mut decoder = png::Decoder::new(img_file);
     decoder.set_transformations(png::Transformations::IDENTITY);
     let mut reader = decoder.read_info().unwrap();
@@ -59,7 +80,7 @@ fn main() {
     let color_samples = info.color_type.samples() as u32;
     let (img_w, img_h) = info.size();
 
-    let path_out = Path::new(&filename_out);
+    let path_out = Path::new(&args.filename_out);
     let file = File::create(path_out).unwrap();
     let w = BufWriter::new(file);
     let mut encoder = png::Encoder::new(w, img_w, img_h); // Width is 2 pixels and height is 1.
@@ -79,7 +100,7 @@ fn main() {
     match info.bit_depth {
         BitDepth::Eight => {
             reader.next_frame(&mut buffer).unwrap();
-            let result_bytes = denoise(&buffer, img_w, img_h, shader_type, denoise_params);
+            let result_bytes = denoise(&buffer, img_w, img_h, shader_type, denoise_params, args.use_hsv);
             writer.write_image_data(&result_bytes.into_iter().collect::<Vec<u8>>());
         }
         BitDepth::Sixteen => {
@@ -89,7 +110,7 @@ fn main() {
             buffer_cursor
                 .read_u16_into::<BigEndian>(&mut buffer_u16)
                 .unwrap();
-            let result_bytes = denoise(&buffer_u16, img_w, img_h, shader_type, denoise_params);
+            let result_bytes = denoise(&buffer_u16, img_w, img_h, shader_type, denoise_params, args.use_hsv);
             let mut buffer_u8_le = result_bytes.into_iter().map(|v: u16| v.to_be_bytes()).flatten().collect::<Vec<u8>>();
             writer.write_image_data(&buffer_u8_le);
 

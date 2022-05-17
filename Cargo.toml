@@ -12,6 +12,7 @@ bytemuck = "*"
 num-traits = "0.2"
 byteorder = "*"
 rayon = "*"
+clap = { version = "^3", features = ["derive"] }
 
 [build-dependencies]
 handlebars = "*"

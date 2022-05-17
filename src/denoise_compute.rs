@@ -10,14 +10,13 @@ use vulkano::sampler::Sampler;
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
 use vulkano::format::Format;
-use crate::{denoise_shader_gray, DenoiseParams, UsingShader};
+use crate::{DenoiseParams, ShaderParams, UsingShader};
 
 pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<StorageImage>, result_img: Arc<StorageImage>,
-                      sampler: Arc<Sampler>, denoise_params: DenoiseParams) {
+                      sampler: Arc<Sampler>, denoise_params: DenoiseParams, use_hsv: bool) {
 
-    let shader = crate::generated::get_denoise_shader(device.clone(), result_img.format(), UsingShader::Compute);
+    let shader = crate::generated::get_denoise_shader(device.clone(), result_img.format(), UsingShader::Compute, use_hsv);
 
-    //let shader = crate::denoise_shader_gray_compiled::load(device.clone()).unwrap();
     let compute_pipeline = ComputePipeline::new(device.clone(), shader.entry_point("main").unwrap(), &(), None, |_| {})
             .expect("failed to create compute pipeline");
 
@@ -36,13 +35,7 @@ pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<Sto
     let img_w = input_img.dimensions().width();
     let img_h = input_img.dimensions().height();
 
-    let push_constants = denoise_shader_gray::ty::Parameters {
-        Width: img_w,
-        Height: img_h,
-        sigma: denoise_params.sigma,
-        kSigma: denoise_params.kSigma,
-        threshold: denoise_params.threshold
-    };
+    let push_constants = ShaderParams::new(img_w, img_h, denoise_params);
 
     //Computation itself
     let now = Instant::now();

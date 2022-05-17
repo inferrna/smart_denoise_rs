@@ -21,6 +21,7 @@ layout(location = 0) out {{{output_t}}} out_result;
 
 #define INV_SQRT_OF_2PI 0.39894228040143267793994605993439  // 1.0/SQRT_OF_2PI
 #define INV_PI          0.31830988618379067153776752674503
+const float EPSILON = 1e-10;
 
 layout(push_constant) uniform Parameters {
     uint Width;
@@ -29,6 +30,17 @@ layout(push_constant) uniform Parameters {
     float kSigma;
     float threshold;
 } params;
+
+vec2 RGBtoHV(in vec3 rgb)
+{
+    // RGB [0..1] to Hue-Value [0..1]
+    // Based on work by Sam Hocevar and Emil Persson
+    vec4 p = (rgb.g < rgb.b) ? vec4(rgb.bg, -1., 2. / 3.) : vec4(rgb.gb, 0., -1. / 3.);
+    vec4 q = (rgb.r < p.x) ? vec4(p.xyw, rgb.r) : vec4(rgb.r, p.yzx);
+    float c = q.x - min(q.w, q.y);
+    float h = abs((q.w - q.y) / (6. * c + EPSILON) + q.z);
+    return vec2(h, q.x);
+}
 
 void main() {
     vec2 size = vec2(textureSize(image_in, 0));
@@ -46,6 +58,9 @@ void main() {
     const float max_value = float({{{max_val}}});
 {{/if}}
     const {{{processing_t}}} centrPx = texture(image_in, uv).{{{swizzle_vec}}}{{#if max_val}} / max_value {{/if}};
+{{#if is_hsv}}
+    const vec2 centrPxHv = RGBtoHV(centrPx.rgb);
+{{/if}}
 
     float zBuff = 0.0;
     {{{processing_t}}} aBuff = {{{processing_t}}}(0.0);
@@ -55,15 +70,19 @@ void main() {
         float pt = sqrt(radQ-d.x*d.x);       // pt = yRadius: have circular trend
         for (d.y=-pt; d.y <= pt; d.y++) {
             float blurFactor = exp( -dot(d , d) * invSigmaQx2 ) * invSigmaQx2PI;
-
             {{{processing_t}}} walkPx = texture(image_in,uv+d/size).{{{swizzle_vec}}}{{#if max_val}} / max_value {{/if}};
 
-            {{{processing_t}}} dC = walkPx-centrPx;
-{{#if is_vector_type}}
-            float deltaFactor = exp( -dot(dC, dC) * invThresholdSqx2) * invThresholdSqrt2PI * blurFactor;
+{{#if is_hsv}}
+            vec2 walkPxHv = RGBtoHV(walkPx.rgb);
+            vec2 dC = walkPxHv-centrPxHv;
 {{else}}
-            float deltaFactor = exp( -(dC * dC) * invThresholdSqx2) * invThresholdSqrt2PI * blurFactor;
+            {{{processing_t}}} dC = walkPx-centrPx;
 {{/if}}
+
+            float qx2dc = {{#if is_vector_type}}dot(dC, dC){{else}}(dC * dC){{/if}};
+
+            float deltaFactor = exp( -qx2dc * invThresholdSqx2) * invThresholdSqrt2PI * blurFactor;
+
             zBuff += deltaFactor;
             aBuff += deltaFactor*walkPx;
         }
