@@ -75,10 +75,16 @@ pub fn vlk_init() -> (Arc<Device>, Arc<Queue>) {
         (device, queue)
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, clap::ArgEnum)]
 pub enum UsingShader {
     Fragment,
     Compute
+}
+
+#[derive(Debug, Copy, Clone, clap::ArgEnum)]
+pub enum Algo {
+    Smart,
+    Radial
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -184,7 +190,7 @@ impl TypeToFormat for u16 {
     }
 }
 
-pub fn denoise<D>(buf: &[D], img_w: u32, img_h: u32, shader_type: UsingShader, params: DenoiseParams, use_hsv: bool) -> Vec<D>
+pub fn denoise<D>(buf: &[D], img_w: u32, img_h: u32, shader_type: UsingShader, params: DenoiseParams, use_hsv: bool, algo: Algo) -> Vec<D>
 where D: TypeToFormat + num_traits::AsPrimitive<f32> + Sized + Copy + Zero + Send + Sync,
       D: Pod,
 {
@@ -294,9 +300,9 @@ where D: TypeToFormat + num_traits::AsPrimitive<f32> + Sized + Copy + Zero + Sen
 
     match shader_type {
         UsingShader::Fragment => denoise_frag::denoise(device.clone(), queue.clone(), input_img.clone(),
-                                                       result_img.clone(), sampler.clone(), params, use_hsv),
+                                                       result_img.clone(), sampler.clone(), params, use_hsv, algo),
         UsingShader::Compute => denoise_compute::denoise(device.clone(), queue.clone(), input_img.clone(),
-                                                         result_img.clone(), sampler.clone(), params, use_hsv)
+                                                         result_img.clone(), sampler.clone(), params, use_hsv, algo)
     }
 
     let result_buf = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage{

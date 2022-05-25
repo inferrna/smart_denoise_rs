@@ -4,14 +4,7 @@ use std::fs::File;
 use std::io::Write;
 
 pub fn generate_shaders() {
-    let mut handlebars = Handlebars::new();
-    handlebars
-        .register_template_file("shaders", "./templates/denoise_shader.mustache")
-        .unwrap();
-
-
     let mut datas = vec![];
-
     {
         let mut data = HashMap::new();
         //8-bit grayscale
@@ -108,24 +101,35 @@ pub fn generate_shaders() {
 
     let base_path = "src/generated";
 
-    for d in shader_typed_datas_hsv.iter() {
-        let shader = handlebars.render("shaders", d).unwrap();
 
-        let shadert = d.get("compute").unwrap_or(&"fragment");
-        let shadert_enum_val = d.get("shadert_enum_val").unwrap();
 
-        let filtering_type = d.get("is_hsv").unwrap_or(&"");
-        let is_hsv = d.get("is_hsv").is_some();
 
-        let format = d.get("output_format").unwrap();
-        let vk_type = format_pairs.get(*format).unwrap();
+    let mut handlebars = Handlebars::new();
 
-        let name = format!("denoise_shader_{}_{}{}", shadert, format, filtering_type);
-        shader_mods.push(format!("pub(crate) mod {};", &name));
-        let align = 48-(vk_type.len()+shadert_enum_val.len());
-        shader_matchers.push(format!("{:>12}(Format::{}, {}, {}) => {:align$}{}::load(device.clone()),", "", vk_type, shadert_enum_val, is_hsv, "", &name));
-        let mut file = File::create(format!("{}/{}.rs", base_path, &name)).unwrap();
-        file.write_all(shader.as_bytes()).unwrap();
+    for algorythm in ["Smart", "Radial"] {
+        handlebars
+            .register_template_file(algorythm, format!("templates/denoise_shader_{}.mustache", algorythm.to_lowercase()))
+            .unwrap();
+
+        for d in shader_typed_datas_hsv.iter() {
+            let shader = handlebars.render(algorythm, d).unwrap();
+
+            let shadert = d.get("compute").unwrap_or(&"fragment");
+            let shadert_enum_val = d.get("shadert_enum_val").unwrap();
+
+            let filtering_type = d.get("is_hsv").unwrap_or(&"");
+            let is_hsv = d.get("is_hsv").is_some();
+
+            let format = d.get("output_format").unwrap();
+            let vk_type = format_pairs.get(*format).unwrap();
+
+            let name = format!("denoise_shader_{}_{}{}{}", shadert, format, algorythm.to_lowercase(), filtering_type);
+            shader_mods.push(format!("pub(crate) mod {};", &name));
+            let align = 48 - (vk_type.len() + shadert_enum_val.len() + is_hsv.to_string().len());
+            shader_matchers.push(format!("{:>12}(Format::{}, {}, {}, Algo::{}) => {:align$}{}::load(device.clone()),", "", vk_type, shadert_enum_val, is_hsv, algorythm, "", &name));
+            let mut file = File::create(format!("{}/{}.rs", base_path, &name)).unwrap();
+            file.write_all(shader.as_bytes()).unwrap();
+        }
     }
 
     let mut file = File::create(format!("{}/mod.rs", base_path)).unwrap();
@@ -138,9 +142,10 @@ use vulkano::format::Format;
 use vulkano::device::Device;
 use vulkano::shader::ShaderModule;
 use crate::UsingShader;
+use crate::Algo;
 
-    pub(crate) fn get_denoise_shader(device: Arc<Device>, format: Format, shader_type: UsingShader, use_hsv: bool) -> Arc<ShaderModule> {
-        match (format, shader_type, use_hsv) {"#.as_bytes()).unwrap();
+    pub(crate) fn get_denoise_shader(device: Arc<Device>, format: Format, shader_type: UsingShader, use_hsv: bool, algo: Algo) -> Arc<ShaderModule> {
+        match (format, shader_type, use_hsv, algo) {"#.as_bytes()).unwrap();
 
     file.write_all(shader_matchers.join("\n").as_bytes()).unwrap();
 

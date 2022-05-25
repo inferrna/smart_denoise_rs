@@ -19,7 +19,7 @@ use vulkano::sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo, S
 use vulkano::sync::GpuFuture;
 use vulkano::Version;
 use png::{BitDepth, ColorType};
-use smart_denoise::{denoise, DenoiseParams, UsingShader};
+use smart_denoise::{Algo, denoise, DenoiseParams, UsingShader};
 use clap::Parser;
 
 /// Simple program to greet a person
@@ -35,8 +35,8 @@ struct Args {
     filename_out: String,
 
     /// Which shader type to use
-    #[clap(long)]
-    shader_type: String,
+    #[clap(long, arg_enum)]
+    shader_type: UsingShader,
 
     ///Sigma parameter
     #[clap(long)]
@@ -53,6 +53,10 @@ struct Args {
     ///Process denoise in HSV (H & V actually) space
     #[clap(long)]
     use_hsv: bool,
+
+    ///Using algorythm
+    #[clap(long, arg_enum)]
+    algo: Algo,
 }
 
 fn main() {
@@ -64,12 +68,6 @@ fn main() {
         DenoiseParams::new(args.sigma.expect("Provide all 3 parameters: sigma, kSigma and threshold"),
                            args.kSigma.expect("Provide all 3 parameters: sigma, kSigma and threshold"),
                            args.threshold.expect("Provide all 3 parameters: sigma, kSigma and threshold"))
-    };
-
-    let shader_type = match args.shader_type.as_str() {
-        "fragment" => UsingShader::Fragment,
-        "compute" => UsingShader::Compute,
-        v => panic!("Unknown shader type {}. Use fragment or compute.", v)
     };
 
     let img_file = File::open(args.filename_in).unwrap();
@@ -100,7 +98,7 @@ fn main() {
     match info.bit_depth {
         BitDepth::Eight => {
             reader.next_frame(&mut buffer).unwrap();
-            let result_bytes = denoise(&buffer, img_w, img_h, shader_type, denoise_params, args.use_hsv);
+            let result_bytes = denoise(&buffer, img_w, img_h, args.shader_type, denoise_params, args.use_hsv, args.algo);
             writer.write_image_data(&result_bytes.into_iter().collect::<Vec<u8>>());
         }
         BitDepth::Sixteen => {
@@ -110,7 +108,7 @@ fn main() {
             buffer_cursor
                 .read_u16_into::<BigEndian>(&mut buffer_u16)
                 .unwrap();
-            let result_bytes = denoise(&buffer_u16, img_w, img_h, shader_type, denoise_params, args.use_hsv);
+            let result_bytes = denoise(&buffer_u16, img_w, img_h, args.shader_type, denoise_params, args.use_hsv, args.algo);
             let mut buffer_u8_le = result_bytes.into_iter().map(|v: u16| v.to_be_bytes()).flatten().collect::<Vec<u8>>();
             writer.write_image_data(&buffer_u8_le);
 

@@ -3,7 +3,7 @@ use std::time::Instant;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::{Device, Queue};
-use vulkano::image::{ImageAccess, StorageImage};
+use vulkano::image::{ImageAccess, ImageCreateFlags, ImageDimensions, ImageUsage, StorageImage};
 use vulkano::image::view::ImageView;
 use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
@@ -15,7 +15,7 @@ use vulkano::sync;
 use vulkano::sync::GpuFuture;
 use bytemuck::{Pod, Zeroable};
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
-use crate::{DenoiseParams, ShaderParams, UsingShader};
+use crate::{Algo, DenoiseParams, ShaderParams, UsingShader};
 
 
 #[repr(C)]
@@ -27,8 +27,8 @@ struct Vertex {
 vulkano::impl_vertex!(Vertex, position);
 
 pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<StorageImage>, result_img: Arc<StorageImage>,
-                      sampler: Arc<Sampler>, denoise_params: DenoiseParams, use_hsv: bool) {
-    let shader = crate::generated::get_denoise_shader(device.clone(), result_img.format(), UsingShader::Fragment, use_hsv);
+                      sampler: Arc<Sampler>, denoise_params: DenoiseParams, use_hsv: bool, algo: Algo) {
+    let shader = crate::generated::get_denoise_shader(device.clone(), result_img.format(), UsingShader::Fragment, use_hsv, algo);
     let vert_shader = crate::vertex_shader::load(device.clone()).unwrap();
 
 
@@ -72,8 +72,28 @@ pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<Sto
 
     let layout = graphics_pipeline.layout().set_layouts().get(0).unwrap();
 
-    let items = [WriteDescriptorSet::image_view_sampler(0, input_view.clone(), sampler.clone()),];
-        //WriteDescriptorSet::image_view(1, output_view.clone())];
+    let items = match algo {
+        Algo::Smart => vec![WriteDescriptorSet::image_view_sampler(0, input_view.clone(), sampler.clone())],
+        Algo::Radial => {
+            let inter_res_img = StorageImage::with_usage(device.clone(),
+                                                         ImageDimensions::Dim2d { width: img_w, height: img_h, array_layers: 1},
+                                                         vulkano::format::Format::R32_SFLOAT,
+                                                         ImageUsage {
+                                                             transfer_source: true,
+                                                             transfer_destination: false,
+                                                             sampled: false,
+                                                             storage: true,
+                                                             color_attachment: true,
+                                                             depth_stencil_attachment: false,
+                                                             transient_attachment: false,
+                                                             input_attachment: false
+                                                         },
+                                                         ImageCreateFlags::none(),
+                                                         Some(queue.family())).unwrap();
+            vec![WriteDescriptorSet::image_view_sampler(0, input_view.clone(), sampler.clone())]/*,
+                 WriteDescriptorSet::image_view(1, ImageView::new_default(inter_res_img).unwrap())]*/
+        }
+    };
 
     let set = PersistentDescriptorSet::new(layout.clone(), items).unwrap();
 
