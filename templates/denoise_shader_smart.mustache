@@ -42,6 +42,12 @@ vec2 RGBtoHV(in vec3 rgb)
     return vec2(h, q.x);
 }
 
+vec2 diff_hv(vec2 a, vec2 b) {
+    vec2 res = abs(a-b);
+    res.x = min(1.0-res.x, res.x);
+    return res;
+}
+
 float powdot(in vec2 data_rgb, in vec2 p) {
     vec2 powered = pow(abs(data_rgb), p);
     return powered.x + powered.y;
@@ -84,19 +90,6 @@ void main() {
     const vec2 centrPxHv = RGBtoHV(centrPx.rgb);
 {{/if}}
 
-    {{{processing_t}}} nearDiff;
-    float nearDiffs[5][5];
-    for (int x=-2; x <= 2; x++) {
-        for (int y=-2; y <= 2; y++) {
-            nearDiff = centrPx - texture(image_in,uv+vec2(x,y)/size).{{{swizzle_vec}}}{{#if max_val}} / max_value {{/if}};
-            nearDiffs[x+2][y+2] = {{#if is_vector_type}}dot(nearDiff, nearDiff){{else}}nearDiff*nearDiff{{/if}};
-        }
-    }
-//    nearDiff = centrPx - texture(image_in,uv+vec2(-2,-2)/size).{{{swizzle_vec}}}{{#if max_val}} / max_value {{/if}};
-
-
-
-
     vec2 d;
     float zBuff = 0.0;
     {{{processing_t}}} aBuff = {{{processing_t}}}(0.0);
@@ -109,10 +102,8 @@ void main() {
 
 {{#if is_hsv}}
             vec2 walkPxHv = RGBtoHV(walkPx.rgb);
-            vec2 dC = walkPxHv-centrPxHv;
-            vec2 pw = vec2(0.0);
-            pw.x = 2.0;
-            pw.y = 0.75;
+            vec2 dC = diff_hv(walkPxHv,centrPxHv);
+            vec2 pw = vec2(1.75, 0.5);
 {{else}}
             {{{processing_t}}} dC = walkPx-centrPx;
             float pw = 2.0;
