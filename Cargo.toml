@@ -12,7 +12,7 @@ bytemuck = "*"
 num-traits = "0.2"
 byteorder = "*"
 rayon = "*"
-clap = { version = "^3", features = ["derive"] }
+clap = { version = "^4", features = ["derive"] }
 
 [build-dependencies]
 handlebars = "*"
@@ -20,7 +20,7 @@ handlebars = "*"
 [profile.release]
 opt-level = 3
 codegen-units = 16
-debug = true
+debug = false
 panic = 'abort'
 
 [profile.release.build-override]

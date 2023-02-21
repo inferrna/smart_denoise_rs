@@ -103,7 +103,7 @@ void main() {
 {{#if is_hsv}}
             vec2 walkPxHv = RGBtoHV(walkPx.rgb);
             vec2 dC = diff_hv(walkPxHv,centrPxHv);
-            vec2 pw = vec2(1.75, 0.5);
+            vec2 pw = vec2(1.75, 1.5);
 {{else}}
             {{{processing_t}}} dC = walkPx-centrPx;
             float pw = 2.0;

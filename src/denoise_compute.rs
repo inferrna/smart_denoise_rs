@@ -21,7 +21,7 @@ pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<Sto
             .expect("failed to create compute pipeline");
 
     let input_view = ImageView::new_default(input_img.clone()).unwrap();
-    let output_view = ImageView::new_default(result_img.clone()).unwrap();
+    let output_view = ImageView::new_default(result_img).unwrap();
 
     let layout = compute_pipeline.layout().set_layouts().get(0).unwrap();
 
@@ -29,8 +29,8 @@ pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<Sto
     let img_h = input_img.dimensions().height();
 
     let items = match algo {
-        Algo::Smart => vec![WriteDescriptorSet::image_view_sampler(0, input_view.clone(), sampler.clone()),
-                            WriteDescriptorSet::image_view(1, output_view.clone())],
+        Algo::Smart => vec![WriteDescriptorSet::image_view_sampler(0, input_view, sampler),
+                            WriteDescriptorSet::image_view(1, output_view)],
         Algo::Radial => {
             let inter_res_img = StorageImage::with_usage(device.clone(),
                                                       ImageDimensions::Dim2d { width: img_w, height: img_h, array_layers: 1},
@@ -47,9 +47,9 @@ pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<Sto
                                                       },
                                                       ImageCreateFlags::none(),
                                                       Some(queue.family())).unwrap();
-            vec![WriteDescriptorSet::image_view_sampler(0, input_view.clone(), sampler.clone()),
+            vec![WriteDescriptorSet::image_view_sampler(0, input_view, sampler),
                  //WriteDescriptorSet::image_view(1, ImageView::new_default(inter_res_img).unwrap()),
-                 WriteDescriptorSet::image_view(2, output_view.clone())]
+                 WriteDescriptorSet::image_view(2, output_view)]
         }
     };
 

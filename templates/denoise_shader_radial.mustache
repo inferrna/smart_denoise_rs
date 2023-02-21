@@ -49,6 +49,12 @@ vec2 RGBtoHV(in vec3 rgb)
     return vec2(h, q.x);
 }
 
+vec2 diff_hv(vec2 a, vec2 b) {
+    vec2 res = abs(a-b);
+    res.x = min(1.0-res.x, res.x);
+    return res;
+}
+
 float powdot(in vec2 data_rgb, in vec2 p) {
     vec2 powered = pow(abs(data_rgb), p);
     return powered.x + powered.y;
@@ -97,38 +103,81 @@ void main() {
     vec2 d;
     float min_diff = 9999999.0;
     float max_diff = 0.0;
-    int best_i = 0;
+    float best_i = 0.0;
 {{#if is_hsv}}
-    vec2 pw = vec2(2.0, 0.75);
+    vec2 pw = vec2(2.25, 0.75);
 {{else}}
     float pw = 2.0;
 {{/if}}
-    for(int i=0; i < perimeter; i++) {
-        float cosi = cos(float(i)*step);
-        float sini = sin(float(i)*step);
+    float small_radius = 7.0;
+    for(float i=0; i < perimeter; i+=1.5) {
+        float cosi = cos(i*step);
+        float sini = sin(i*step);
         float diffsum = 0.0;
-        for(int r = 1; r< radius; r+=1) {
-            d.x = float(r) * cosi;
-            d.y = float(r) * sini;
+        float blursum = 0.0;
+        float dr = 1.0;
+        for(float r=1; r< small_radius; r+=dr) {
+            d.x = r * cosi;
+            d.y = r * sini;
             {{{processing_t}}} walkPx = texture(image_in, uv+d/size).{{{swizzle_vec}}}{{#if max_val}} / max_value {{/if}};
         {{#if is_hsv}}
             vec2 walkPxHv = RGBtoHV(walkPx.rgb);
-            vec2 dC = walkPxHv-centrPxHv;
+            vec2 dC = diff_hv(walkPxHv,centrPxHv);
         {{else}}
             {{{processing_t}}} dC = walkPx-centrPx;
         {{/if}}
             float qx2dc = {{#if is_vector_type}}powdot(dC, pw){{else}}pow(abs(dC), pw){{/if}};
+            float blurFactor = 1.0 - r / small_radius;
+            diffsum += qx2dc*blurFactor;
+            blursum += blurFactor;
+            dr *= 1.25;
+        }
+        diffsum /= blursum;
+        best_i = diffsum < min_diff ? i : best_i;
+        max_diff = max(max_diff, diffsum);
+        min_diff = min(min_diff, diffsum);
+    }
+    float best_disperse = 1.0;
+    min_diff = 9999999.0;
+    for(float i=best_i-1.5; i < best_i+1.9; i+=0.5) {
+        float cosi = cos(i*step);
+        float sini = sin(i*step);
+        float diffsum = 0.0;
+        {{#if is_hsv}}
+        vec2 prevWalkPxHv = centrPxHv;
+        {{else}}
+        {{{processing_t}}} prevWalkPx = centrPx;
+        {{/if}}
+        float disperse = 0.0;
+        for(float r=1; r< radius; r+=1.0) {
+            d.x = r * cosi;
+            d.y = r * sini;
+        {{{processing_t}}} walkPx = texture(image_in, uv+d/size).{{{swizzle_vec}}}{{#if max_val}} / max_value {{/if}};
+        {{#if is_hsv}}
+            vec2 walkPxHv = RGBtoHV(walkPx.rgb);
+            vec2 dC = diff_hv(walkPxHv,centrPxHv);
+            disperse += length(diff_hv(walkPxHv,prevWalkPxHv));
+            prevWalkPxHv = walkPxHv;
+        {{else}}
+            {{{processing_t}}} dC = walkPx-centrPx;
+            disperse += length(prevWalkPx - walkPx);
+            prevWalkPx = walkPx;
+        {{/if}}
+            float qx2dc = {{#if is_vector_type}}powdot(dC, pw){{else}}pow(abs(dC), pw){{/if}};
             diffsum += qx2dc;
         }
+        best_disperse = diffsum < min_diff ? disperse : best_disperse;
         best_i = diffsum < min_diff ? i : best_i;
         max_diff = max(max_diff, diffsum);
         min_diff = min(min_diff, diffsum);
     }
 
+    best_disperse = pow(best_disperse / radius, 0.1);
+
     float diff_rel = min_diff / max(max_diff, EPSILON);
-    float max_possible_diff = radius * {{#if is_vector_type}}powdot({{#if is_hsv}}vec2{{else}}vec3{{/if}}(1.0), 1.0){{else}}1.0{{/if}};
+    float max_possible_diff = small_radius * {{#if is_vector_type}}powdot({{#if is_hsv}}vec2{{else}}vec3{{/if}}(1.0), 1.0){{else}}1.0{{/if}};
     //float fres = 1.0 - exp(-diff_rel);
-    float fres = pow(min_diff / max_possible_diff, 0.125);
+    float fres = pow(min_diff / max_possible_diff, 0.075);
 {{!--
     imageStore(image_inter_res, ivec2({{#if compute}}gl_GlobalInvocationID{{else}}gl_FragCoord{{/if}}.xy), vec4(fres,0,0,0));
     memoryBarrier();
@@ -158,40 +207,41 @@ void main() {
     float zBuff = 0.0;
     {{{processing_t}}} aBuff = {{{processing_t}}}(0.0);
     fres = max(fres, EPSILON);
+    //int dp = max(1,int(round(min_diff * perimeter / max_diff)));
     int dp = max(1,int(round(perimeter / 20.0)));
-    int dpd = dp * 5;
-    for (int i = best_i-dp; i<= best_i+dp; i+=1) {
-        float cosi = cos(float(i)*step);
-        float sini = sin(float(i)*step);
+    int dpd = dp * 2;
+    for (float i = best_i-dp; i<= best_i+dp; i+=1) {
+        float cosi = cos(i*step);
+        float sini = sin(i*step);
         int maxr = 1+int(float(radius*(dpd-abs(best_i - i))) / float(dpd));
         for(int r = 1; r < maxr; r+=1) {
             d.x = float(r) * cosi;
             d.y = float(r) * sini;
-            float blurFactor = exp( -dot(d , d) * invSigmaQx2 ) * invSigmaQx2PI;
+            float blurFactor = exp( -dot(d,d) * invSigmaQx2 ) * invSigmaQx2PI;
             {{{processing_t}}} walkPx = texture(image_in,uv+d/size).{{{swizzle_vec}}}{{#if max_val}} / max_value {{/if}};
 
-            {{#if is_hsv}}
-                vec2 walkPxHv = RGBtoHV(walkPx.rgb);
-                vec2 dC = walkPxHv-centrPxHv;
-                vec2 pw = vec2(0.0);
-                pw.x = 2.0;
-                pw.y = 0.75;
-            {{else}}
-                {{{processing_t}}} dC = walkPx-centrPx;
-                float pw = 2.0;
-            {{/if}}
+       {{#if is_hsv}}
+           vec2 walkPxHv = RGBtoHV(walkPx.rgb);
+           vec2 dC = diff_hv(walkPxHv,centrPxHv);
+           vec2 pw = vec2(0.0);
+           pw.x = 2.0;
+           pw.y = 0.75;
+       {{else}}
+           {{{processing_t}}} dC = walkPx-centrPx;
+           float pw = 2.0;
+       {{/if}}
 
             //float qx2dc = {{#if is_vector_type}}dot(dC, dC){{else}}(dC * dC){{/if}};
-
             float qx2dc = {{#if is_vector_type}}powdot(dC, pw){{else}}pow(abs(dC), pw){{/if}};
-
             float deltaFactor = exp( -qx2dc * invThresholdSqx2) * invThresholdSqrt2PI * blurFactor;
+            deltaFactor = pow(deltaFactor, 1.0 - best_disperse); //zero disperse - business as usual. Large disperse - have to smooth all with no regret.
 
             zBuff += deltaFactor;
             aBuff += deltaFactor*walkPx;
         }
     }
 
+    //fres = 1.0;
 
     {{{output_t}}} result = {{{output_t}}}(0);
     result.{{{swizzle_vec}}} =

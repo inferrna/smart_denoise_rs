@@ -31,7 +31,6 @@ pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<Sto
     let shader = crate::generated::get_denoise_shader(device.clone(), result_img.format(), UsingShader::Fragment, use_hsv, algo);
     let vert_shader = crate::vertex_shader::load(device.clone()).unwrap();
 
-
     let img_w = input_img.dimensions().width();
     let img_h = input_img.dimensions().height();
 
@@ -67,13 +66,13 @@ pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<Sto
         .build(device.clone())
         .unwrap();
 
-    let input_view = ImageView::new_default(input_img.clone()).unwrap();
-    let output_view = ImageView::new_default(result_img.clone()).unwrap();
+    let input_view = ImageView::new_default(input_img).unwrap();
+    let output_view = ImageView::new_default(result_img).unwrap();
 
     let layout = graphics_pipeline.layout().set_layouts().get(0).unwrap();
 
     let items = match algo {
-        Algo::Smart => vec![WriteDescriptorSet::image_view_sampler(0, input_view.clone(), sampler.clone())],
+        Algo::Smart => vec![WriteDescriptorSet::image_view_sampler(0, input_view, sampler)],
         Algo::Radial => {
             let inter_res_img = StorageImage::with_usage(device.clone(),
                                                          ImageDimensions::Dim2d { width: img_w, height: img_h, array_layers: 1},
@@ -90,7 +89,7 @@ pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<Sto
                                                          },
                                                          ImageCreateFlags::none(),
                                                          Some(queue.family())).unwrap();
-            vec![WriteDescriptorSet::image_view_sampler(0, input_view.clone(), sampler.clone())]/*,
+            vec![WriteDescriptorSet::image_view_sampler(0, input_view, sampler)]/*,
                  WriteDescriptorSet::image_view(1, ImageView::new_default(inter_res_img).unwrap())]*/
         }
     };
@@ -129,7 +128,7 @@ pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<Sto
 
 
     let framebuffer = Framebuffer::new(
-        render_pass.clone(),
+        render_pass,
         FramebufferCreateInfo {
             attachments: vec![output_view],
             ..Default::default()
@@ -143,7 +142,7 @@ pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<Sto
             AutoCommandBufferBuilder::primary(device.clone(), queue.family(), CommandBufferUsage::OneTimeSubmit).unwrap();
         builder
             .begin_render_pass(
-                framebuffer.clone(),
+                framebuffer,
                 SubpassContents::Inline,
                 vec![[0u32, 0u32].into()],
             )
@@ -164,7 +163,7 @@ pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<Sto
 
 
     let future = sync::now(device.clone())
-        .then_execute(queue.clone(), command_buffer)
+        .then_execute(queue, command_buffer)
         .unwrap()
         .then_signal_fence_and_flush()
         .unwrap();

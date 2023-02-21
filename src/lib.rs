@@ -27,6 +27,7 @@ pub fn vlk_init() -> (Arc<Device>, Arc<Queue>) {
 
     let device_extensions = DeviceExtensions {
         khr_storage_buffer_storage_class: true,
+        khr_16bit_storage: true,
         ..DeviceExtensions::none()
     };
 
@@ -299,10 +300,10 @@ where D: TypeToFormat + num_traits::AsPrimitive<f32> + Sized + Copy + Zero + Sen
                                               Some(queue.family())).unwrap();
 
     match shader_type {
-        UsingShader::Fragment => denoise_frag::denoise(device.clone(), queue.clone(), input_img.clone(),
-                                                       result_img.clone(), sampler.clone(), params, use_hsv, algo),
-        UsingShader::Compute => denoise_compute::denoise(device.clone(), queue.clone(), input_img.clone(),
-                                                         result_img.clone(), sampler.clone(), params, use_hsv, algo)
+        UsingShader::Fragment => denoise_frag::denoise(device.clone(), queue.clone(), input_img,
+                                                       result_img.clone(), sampler, params, use_hsv, algo),
+        UsingShader::Compute => denoise_compute::denoise(device.clone(), queue.clone(), input_img,
+                                                         result_img.clone(), sampler, params, use_hsv, algo)
     }
 
     let result_buf = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage{
