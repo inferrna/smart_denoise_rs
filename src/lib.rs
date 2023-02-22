@@ -85,7 +85,9 @@ pub enum UsingShader {
 
 #[derive(Debug, Copy, Clone, ValueEnum, Parser)]
 pub enum Algo {
+    ///Smart denoise, reimplementation of https://github.com/BrutPitt/glslSmartDeNoise/
     Smart,
+    ///Radial denoise. Better for thin lines like hairs, leaves, grass, etc
     Radial
 }
 

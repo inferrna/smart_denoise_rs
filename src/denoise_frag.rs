@@ -168,5 +168,5 @@ pub(crate) fn denoise(device: Arc<Device>, queue: Arc<Queue>, input_img: Arc<Sto
         .then_signal_fence_and_flush()
         .unwrap();
     future.wait(None).unwrap();
-    println!("Execute computation itself taken {} milliseconds", now.elapsed().as_millis());
+    #[cfg(debug_assertions)] eprintln!("Execute computation itself taken {} milliseconds", now.elapsed().as_millis());
 }
