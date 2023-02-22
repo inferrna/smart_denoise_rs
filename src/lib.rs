@@ -8,7 +8,7 @@ mod generated;
 use std::sync::Arc;
 use bytemuck::Pod;
 use num_traits::Zero;
-use vulkano::buffer::{BufferContents, BufferUsage, CpuAccessibleBuffer};
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer};
 use vulkano::device::{Device, Features, DeviceCreateInfo, Queue, QueueCreateInfo};
 use vulkano::device::DeviceExtensions;
@@ -18,6 +18,7 @@ use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::image::{ImageCreateFlags, ImageDimensions, ImageUsage, StorageImage};
 use vulkano::sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode, SamplerReductionMode};
 use vulkano::sync::GpuFuture;
+use clap::{Parser, ValueEnum};
 
 pub fn vlk_init() -> (Arc<Device>, Arc<Queue>) {
         let instance =
@@ -76,13 +77,13 @@ pub fn vlk_init() -> (Arc<Device>, Arc<Queue>) {
         (device, queue)
 }
 
-#[derive(Debug, Copy, Clone, clap::ArgEnum)]
+#[derive(Debug, Copy, Clone, ValueEnum, Parser)]
 pub enum UsingShader {
     Fragment,
     Compute
 }
 
-#[derive(Debug, Copy, Clone, clap::ArgEnum)]
+#[derive(Debug, Copy, Clone, ValueEnum, Parser)]
 pub enum Algo {
     Smart,
     Radial
@@ -191,9 +192,13 @@ impl TypeToFormat for u16 {
     }
 }
 
+pub trait Denoiseable: TypeToFormat + num_traits::AsPrimitive<f32> + Sized + Copy + Zero + Send + Sync + Pod {}
+impl Denoiseable for u8 {}
+impl Denoiseable for u16 {}
+impl Denoiseable for f32 {}
+
 pub fn denoise<D>(buf: &[D], img_w: u32, img_h: u32, shader_type: UsingShader, params: DenoiseParams, use_hsv: bool, algo: Algo) -> Vec<D>
-where D: TypeToFormat + num_traits::AsPrimitive<f32> + Sized + Copy + Zero + Send + Sync,
-      D: Pod,
+where D: Denoiseable
 {
     let (device, queue) = vlk_init();
 
@@ -239,7 +244,7 @@ where D: TypeToFormat + num_traits::AsPrimitive<f32> + Sized + Copy + Zero + Sen
             CpuAccessibleBuffer::from_iter(device.clone(), input_usage, false,
                                            input2sample.into_iter()).expect("failed to create buffer");
 
-    dbg!(D::type2sampled_format(num_input_samples));
+    #[cfg(debug_assertions)] dbg!(D::type2sampled_format(num_input_samples));
     let input_img = StorageImage::with_usage(device.clone(),
                                              ImageDimensions::Dim2d { width: img_w, height: img_h, array_layers: 1},
                                              D::type2sampled_format(num_input_samples),
@@ -265,7 +270,7 @@ where D: TypeToFormat + num_traits::AsPrimitive<f32> + Sized + Copy + Zero + Sen
             .copy_buffer_to_image(img_buf.clone(), input_img.clone()).unwrap();
         builder.build().unwrap()
     };
-    println!("Execute copy buffer to image");
+    #[cfg(debug_assertions)] eprintln!("Execute copy buffer to image");
     let finished = command_buffer.execute(queue.clone()).unwrap();
     finished.then_signal_fence_and_flush().unwrap()
             .wait(None).unwrap();
@@ -323,12 +328,12 @@ where D: TypeToFormat + num_traits::AsPrimitive<f32> + Sized + Copy + Zero + Sen
     //Read filtered image
     let command_buffer = {
         let mut builder =
-            AutoCommandBufferBuilder::primary(device.clone(), queue.family(), CommandBufferUsage::OneTimeSubmit).unwrap();
+            AutoCommandBufferBuilder::primary(device, queue.family(), CommandBufferUsage::OneTimeSubmit).unwrap();
         builder
-            .copy_image_to_buffer(result_img.clone(), result_buf.clone()).unwrap();
+            .copy_image_to_buffer(result_img, result_buf.clone()).unwrap();
         builder.build().unwrap()
     };
-    println!("Execute copy image to buffer");
+    #[cfg(debug_assertions)] eprintln!("Execute copy image to buffer");
     let finished = command_buffer.execute(queue.clone()).unwrap();
     finished.then_signal_fence_and_flush().unwrap()
             .wait(None).unwrap();

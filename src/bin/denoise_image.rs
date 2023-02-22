@@ -35,7 +35,7 @@ struct Args {
     filename_out: String,
 
     /// Which shader type to use
-    #[clap(long, arg_enum)]
+    #[clap(long)]
     shader_type: UsingShader,
 
     ///Sigma parameter
@@ -55,8 +55,8 @@ struct Args {
     use_hsv: bool,
 
     ///Using algorythm
-    #[clap(long, arg_enum)]
-    algo: Algo,
+    #[clap(long)]
+    algo: Algo
 }
 
 fn main() {
