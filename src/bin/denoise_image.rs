@@ -22,7 +22,7 @@ use png::{BitDepth, ColorType};
 use smart_denoise::{Algo, denoise, DenoiseParams, UsingShader};
 use clap::Parser;
 
-/// Simple program to greet a person
+/// Simple program to denoise an image
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
